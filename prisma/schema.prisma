@@ -1,0 +1,188 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  MASTER_ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+enum LeaveKind {
+  HOLIDAY
+  SICK
+  UNPAID
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum DocumentKind {
+  CONTRACT
+  INVOICE
+}
+
+enum InvoiceStatus {
+  DRAFT
+  FINALIZED
+}
+
+model Employee {
+  id               String         @id @default(cuid())
+  name             String
+  email            String         @unique
+  role             Role           @default(EMPLOYEE)
+  title            String
+  department       String
+  location         String
+  managerId        String?
+  manager          Employee?      @relation("ManagerReports", fields: [managerId], references: [id])
+  reports          Employee[]     @relation("ManagerReports")
+  startDate        DateTime
+  holidayAllowance Int
+  holidayRemaining Int
+  sickDaysUsed     Int            @default(0)
+  unpaidLeaveUsed  Int            @default(0)
+  passwordHash      String?
+  lastLoginAt       DateTime?
+  financialProfile FinancialProfile?
+  leaveRequests    LeaveRequest[]
+  documents        Document[]
+  invoices         Invoice[]
+  sessions         Session[]
+  auditEvents      AuditLog[]     @relation("ActorAuditEvents")
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([managerId])
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([employeeId])
+  @@index([expiresAt])
+}
+
+model FinancialProfile {
+  id           String   @id @default(cuid())
+  employeeId   String   @unique
+  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  currency     String
+  monthlyRate  Int
+  invoiceCycle String   @default("monthly")
+  contractType String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model LeaveRequest {
+  id            String       @id @default(cuid())
+  employeeId    String
+  employee      Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  kind          LeaveKind
+  status        LeaveStatus  @default(PENDING)
+  from          DateTime
+  to            DateTime
+  days          Int
+  requestedAt   DateTime     @default(now())
+  reviewerId    String?
+  decidedAt     DateTime?
+  slackThreadId String?
+  decisions     LeaveDecision[]
+
+  @@index([employeeId])
+  @@index([status])
+}
+
+model LeaveDecision {
+  id             String       @id @default(cuid())
+  leaveRequestId String
+  leaveRequest   LeaveRequest @relation(fields: [leaveRequestId], references: [id], onDelete: Cascade)
+  reviewerId     String
+  decision       LeaveStatus
+  decidedAt      DateTime     @default(now())
+  note           String?
+
+  @@index([leaveRequestId])
+  @@index([reviewerId])
+}
+
+model Document {
+  id                String       @id @default(cuid())
+  employeeId        String
+  employee          Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  kind              DocumentKind
+  title             String
+  period            String
+  amount            Int?
+  currency          String?
+  issuedAt          DateTime
+  privateStorageKey String
+  createdAt         DateTime     @default(now())
+
+  @@index([employeeId])
+  @@index([kind])
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  employeeId    String
+  employee      Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  period        String
+  amount        Int
+  currency      String
+  status        InvoiceStatus @default(DRAFT)
+  generatedAt   DateTime      @default(now())
+  finalizedAt   DateTime?
+  pdfStorageKey String
+  items         InvoiceItem[]
+
+  @@unique([employeeId, period])
+  @@index([status])
+}
+
+model InvoiceItem {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Int
+  unitAmount  Int
+  totalAmount Int
+}
+
+model SlackIdentity {
+  id          String   @id @default(cuid())
+  employeeId  String   @unique
+  slackUserId String   @unique
+  createdAt   DateTime @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  actor      Employee @relation("ActorAuditEvents", fields: [actorId], references: [id])
+  action     String
+  targetType String
+  targetId   String
+  metadata   Json
+  createdAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+}
