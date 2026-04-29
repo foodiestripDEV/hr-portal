@@ -1,14 +1,16 @@
+import type { ReactNode } from "react";
 import { logoutAction } from "@/app/actions/auth";
 import {
   createLeaveRequestAction,
   decideLeaveRequestAction,
   generateInvoicesAction,
+  updatePersonalInfoAction,
 } from "@/app/actions/hr";
 import { getDashboardViewModel } from "@/lib/hr/dashboard";
 import { requireCurrentViewer } from "@/lib/hr/session";
 import type { DashboardViewModel, DocumentKind, LeaveKind, LeaveStatus } from "@/lib/hr/types";
 
-const navItems = ["Dashboard", "Requests", "Calendar", "Documents", "People", "Admin"];
+const navItems = ["Dashboard", "Requests", "Calendar", "Documents", "Invoices", "People", "Admin"];
 
 const metricToneClasses: Record<DashboardViewModel["metrics"][number]["tone"], string> = {
   amber: "border-amber-200 bg-amber-50 text-amber-950",
@@ -33,6 +35,8 @@ const kindLabels: Record<LeaveKind, string> = {
 const documentLabels: Record<DocumentKind, string> = {
   contract: "Contract",
   invoice: "Invoice",
+  official: "Official",
+  private: "Private",
 };
 
 export default async function Home() {
@@ -62,7 +66,7 @@ export default async function Home() {
                     ? "bg-zinc-950 text-white"
                     : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950",
                 )}
-                href={index === 0 ? "/" : `#${item.toLowerCase()}`}
+                href={getNavHref(item, model.activeRoleSlug)}
                 key={item}
               >
                 <Icon name={item.toLowerCase()} />
@@ -125,6 +129,94 @@ export default async function Home() {
                 <p className="mt-1 text-sm opacity-75">{metric.detail}</p>
               </article>
             ))}
+          </section>
+
+          <section
+            className="mt-6 rounded-lg border border-zinc-200 bg-white p-5 shadow-sm"
+            id="personal-info"
+          >
+            <div className="flex flex-col gap-1 border-b border-zinc-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold tracking-normal">Personal Info</h2>
+             
+              </div>
+            </div>
+
+            <form
+              action={updatePersonalInfoAction}
+              className="mt-5"
+              encType="multipart/form-data"
+            >
+              <div className="overflow-hidden rounded-lg border border-zinc-200">
+                <ProfileFieldRow label="Name">
+                  <input
+                    className="h-11 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-950"
+                    defaultValue={model.viewer.name}
+                    name="name"
+                    required
+                  />
+                </ProfileFieldRow>
+                <ProfileFieldRow label="Email">
+                  <input
+                    className="h-11 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-950"
+                    defaultValue={model.viewer.email}
+                    name="email"
+                    required
+                    type="email"
+                  />
+                </ProfileFieldRow>
+                <ProfileFieldRow label="User Avatar">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                    <ProfileAvatar
+                      name={model.viewer.name}
+                      profilePhotoUrl={model.viewer.profilePhotoUrl}
+                    />
+                    <div className="flex-1">
+                      <label className="block rounded-lg border border-dashed border-zinc-300 bg-zinc-50 p-4">
+                        <span className="text-sm font-medium text-zinc-700">
+                          Browse files to upload
+                        </span>
+                        <input
+                          accept="image/*"
+                          className="mt-3 block w-full text-sm text-zinc-600 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-950 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white"
+                          name="profilePhoto"
+                          type="file"
+                        />
+                      </label>
+                      <p className="mt-2 text-xs text-zinc-500">
+                        PNG, JPG, GIF, or WebP up to 2 MB.
+                      </p>
+                    </div>
+                    {model.viewer.profilePhotoUrl ? (
+                      <button
+                        className="inline-flex size-11 items-center justify-center rounded-lg border border-zinc-300 text-zinc-600 transition hover:border-zinc-950 hover:text-zinc-950"
+                        formNoValidate
+                        name="removeAvatar"
+                        title="Remove avatar"
+                        type="submit"
+                        value="true"
+                      >
+                        <Icon name="trash" />
+                      </button>
+                    ) : null}
+                  </div>
+                </ProfileFieldRow>
+                <ProfileFieldRow label="Job Title">
+                  <input
+                    className="h-11 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-950"
+                    defaultValue={model.viewer.title}
+                    name="title"
+                    required
+                  />
+                </ProfileFieldRow>
+              </div>
+
+              <div className="mt-4 flex justify-end">
+                <button className="inline-flex h-10 items-center justify-center rounded-lg bg-zinc-950 px-4 text-sm font-semibold text-white">
+                  Save Personal Info
+                </button>
+              </div>
+            </form>
           </section>
 
           <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_360px]">
@@ -446,6 +538,49 @@ function BalanceRow({ label, value }: { label: string; value: number }) {
   );
 }
 
+function ProfileFieldRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid gap-3 border-b border-zinc-200 px-4 py-4 last:border-b-0 md:grid-cols-[180px_1fr] md:items-start">
+      <p className="pt-2 text-sm font-medium text-zinc-600">{label}</p>
+      {children}
+    </div>
+  );
+}
+
+function ProfileAvatar({
+  name,
+  profilePhotoUrl,
+}: {
+  name: string;
+  profilePhotoUrl: string | null;
+}) {
+  if (profilePhotoUrl) {
+    return (
+      <img
+        alt={`${name} avatar`}
+        className="size-20 rounded-lg border border-zinc-200 object-cover"
+        src={profilePhotoUrl}
+      />
+    );
+  }
+
+  return (
+    <div className="flex size-20 items-center justify-center rounded-lg bg-zinc-950 text-lg font-semibold text-white">
+      {name
+        .split(" ")
+        .map((part) => part[0])
+        .join("")
+        .slice(0, 2)}
+    </div>
+  );
+}
+
 function Icon({ name }: { name: string }) {
   const common = {
     className: "size-4 shrink-0",
@@ -473,7 +608,7 @@ function Icon({ name }: { name: string }) {
     );
   }
 
-  if (name === "documents") {
+  if (name === "documents" || name === "invoices") {
     return (
       <svg {...common}>
         <path d="M7 3h7l4 4v14H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
@@ -503,6 +638,14 @@ function Icon({ name }: { name: string }) {
     return (
       <svg {...common}>
         <path d="M7 10V8a5 5 0 0 1 10 0v2M6 10h12v10H6V10Z" />
+      </svg>
+    );
+  }
+
+  if (name === "trash") {
+    return (
+      <svg {...common}>
+        <path d="M4 7h16M9 7V5h6v2M8 7v12m8-12v12M6 7l1 13a1 1 0 0 0 1 .9h8a1 1 0 0 0 1-.9L18 7" />
       </svg>
     );
   }
@@ -537,6 +680,26 @@ function formatDateTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function getNavHref(item: string, role: DashboardViewModel["activeRoleSlug"]): string {
+  if (item === "Dashboard") {
+    return "/";
+  }
+
+  if (role === "admin") {
+    const adminRoutes: Record<string, string> = {
+      Requests: "/admin/requests",
+      Calendar: "/admin/calendar",
+      Documents: "/admin/documents",
+      Invoices: "/admin/invoices",
+      Admin: "/admin",
+    };
+
+    return adminRoutes[item] ?? `#${item.toLowerCase()}`;
+  }
+
+  return `#${item.toLowerCase()}`;
 }
 
 function cx(...classes: Array<string | false>): string {

@@ -93,3 +93,11 @@ export function canDecideLeaveRequest(
 export function canGenerateInvoices(viewer: Viewer): boolean {
   return isMasterAdmin(viewer);
 }
+
+export function canManageEmployees(viewer: Viewer): boolean {
+  return isMasterAdmin(viewer);
+}
+
+export function canManageInvoices(viewer: Viewer): boolean {
+  return isMasterAdmin(viewer);
+}

@@ -44,11 +44,57 @@ All access checks should be resource-level checks, not only route-level role che
 - Leave balance
 - Leave request
 - Leave decision
-- Document
+- Document with type and status
 - Invoice
 - Invoice line item
 - Slack approval event
 - Audit log
+
+## Admin Workspace Scope
+
+Admin functionality should be split into focused pages instead of relying only on the main dashboard:
+
+- `/admin`: employee access, email visibility, password reset action, future profile photo support, and role assignment.
+- `/admin/requests`: leave and request queue with status, employee, approver, and date range filters.
+- `/admin/calendar`: month calendar view showing who is off on which day, with approved and pending requests styled differently.
+- `/admin/documents`: private document register with status, employee, date range, and document type filters.
+- `/admin/invoices`: invoice register with employee, date range, paid/unpaid status filters, period generation, edit, download, multi-select, and CSV export.
+
+Admin filters required across the main operational pages:
+
+- Status filter: pending, approved, rejected for requests/documents; paid/unpaid for invoices.
+- Person filter: search by employee name or email.
+- Date filter: request leave dates, document issued date, or invoice generated date.
+
+Request rows must clearly show who requested the leave, who is responsible for approval or who approved it, the requested leave dates, and the employee's remaining leave balance.
+
+Document types should include:
+
+- Invoice
+- Official document
+- Private document
+- Contract
+
+Calendar requirements:
+
+- Month-grid calendar view.
+- Approved and pending leave requests shown with different colors.
+- Turkey and Italy public holidays seeded for the visible year, with a production path to move holidays into a policy/configuration table.
+
+Admin user management requirements:
+
+- Show employee email.
+- Allow password reset request recording.
+- Reserve a field for future profile photos.
+- Allow Admin to assign Employee, Manager, or Admin roles.
+
+Invoice requirements:
+
+- Filter by person, generated date range, and paid/unpaid status.
+- Generate invoices for a selected period.
+- Edit invoice status.
+- Download invoice files.
+- Select multiple invoices and export CSV.
 
 ## MVP Order
 
@@ -74,7 +120,9 @@ All access checks should be resource-level checks, not only route-level role che
 - `app/api/leave-requests/route.ts`: leave list and create endpoint.
 - `app/api/leave-requests/[id]/decision/route.ts`: manager/admin decision endpoint.
 - `app/api/documents/[id]/download/route.ts`: authorized private download URL endpoint.
-- `app/api/invoices/generate/route.ts`: admin-only draft invoice generation endpoint.
+- `app/api/invoices/generate/route.ts`: admin-only unpaid invoice generation endpoint.
+- `app/api/invoices/[id]/download/route.ts`: authorized invoice download endpoint.
+- `app/api/invoices/export/route.ts`: admin-only filtered or selected invoice CSV export endpoint.
 - `app/api/slack/interactions/route.ts`: Slack interaction callback with request signature verification.
 - `prisma/schema.prisma`: target PostgreSQL schema.
 

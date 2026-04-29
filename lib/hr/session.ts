@@ -215,6 +215,7 @@ function toViewer(employee: EmployeeRecord): Viewer {
     role: employee.role,
     title: employee.title,
     department: employee.department,
+    profilePhotoUrl: employee.profilePhotoUrl,
   };
 }
 

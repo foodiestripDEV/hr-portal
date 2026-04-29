@@ -28,11 +28,19 @@ enum LeaveStatus {
 enum DocumentKind {
   CONTRACT
   INVOICE
+  OFFICIAL
+  PRIVATE
+}
+
+enum DocumentStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum InvoiceStatus {
-  DRAFT
-  FINALIZED
+  PAID
+  UNPAID
 }
 
 model Employee {
@@ -47,6 +55,7 @@ model Employee {
   manager          Employee?      @relation("ManagerReports", fields: [managerId], references: [id])
   reports          Employee[]     @relation("ManagerReports")
   startDate        DateTime
+  profilePhotoUrl  String?
   holidayAllowance Int
   holidayRemaining Int
   sickDaysUsed     Int            @default(0)
@@ -126,6 +135,7 @@ model Document {
   employeeId        String
   employee          Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   kind              DocumentKind
+  status            DocumentStatus @default(APPROVED)
   title             String
   period            String
   amount            Int?
@@ -136,6 +146,7 @@ model Document {
 
   @@index([employeeId])
   @@index([kind])
+  @@index([status])
 }
 
 model Invoice {
@@ -145,7 +156,7 @@ model Invoice {
   period        String
   amount        Int
   currency      String
-  status        InvoiceStatus @default(DRAFT)
+  status        InvoiceStatus @default(UNPAID)
   generatedAt   DateTime      @default(now())
   finalizedAt   DateTime?
   pdfStorageKey String

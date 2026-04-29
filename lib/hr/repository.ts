@@ -1,19 +1,21 @@
-import { documents, employees, leaveRequests } from "./mock-data";
+import { documents, employees, invoices, leaveRequests } from "./mock-data";
 import type {
   AuditAction,
   AuditLogRecord,
   DocumentRecord,
   EmployeeRecord,
   InvoiceRecord,
+  InvoiceStatus,
   LeaveKind,
   LeaveRequestRecord,
   LeaveStatus,
+  Role,
 } from "./types";
 
 let employeeTable = employees.map((employee) => ({ ...employee }));
 let leaveRequestTable = leaveRequests.map((request) => ({ ...request }));
 const documentTable = documents.map((document) => ({ ...document }));
-let invoiceTable: InvoiceRecord[] = [];
+let invoiceTable: InvoiceRecord[] = invoices.map((invoice) => ({ ...invoice }));
 let auditLogTable: AuditLogRecord[] = [];
 
 export async function listEmployees(): Promise<EmployeeRecord[]> {
@@ -57,6 +59,11 @@ export async function findLeaveRequestById(
 export async function findDocumentById(id: string): Promise<DocumentRecord | undefined> {
   const document = documentTable.find((item) => item.id === id);
   return document ? { ...document } : undefined;
+}
+
+export async function findInvoiceById(id: string): Promise<InvoiceRecord | undefined> {
+  const invoice = invoiceTable.find((item) => item.id === id);
+  return invoice ? { ...invoice } : undefined;
 }
 
 export async function createLeaveRequest(input: {
@@ -166,7 +173,7 @@ export async function generateMonthlyInvoices(input: {
         period: input.period,
         amount: employee.financialProfile.monthlyRate,
         currency: employee.financialProfile.currency,
-        status: "draft" as const,
+        status: "unpaid" as const,
         generatedAt,
         pdfStorageKey: `invoices/${employee.id}/${normalizedPeriod}.pdf`,
       };
@@ -190,6 +197,172 @@ export async function generateMonthlyInvoices(input: {
   });
 
   return invoices.map((invoice) => ({ ...invoice }));
+}
+
+export async function updateEmployeeProfile(input: {
+  actorId: string;
+  employeeId: string;
+  name: string;
+  email: string;
+  title: string;
+  profilePhotoUrl?: string | null;
+}): Promise<EmployeeRecord> {
+  const existing = employeeTable.find((employee) => employee.id === input.employeeId);
+
+  if (!existing) {
+    throw new Error("Employee not found.");
+  }
+
+  const normalizedEmail = input.email.trim().toLowerCase();
+  const emailOwner = employeeTable.find(
+    (employee) => employee.email.toLowerCase() === normalizedEmail && employee.id !== input.employeeId,
+  );
+
+  if (emailOwner) {
+    throw new Error("Email already belongs to another employee.");
+  }
+
+  employeeTable = employeeTable.map((employee) =>
+    employee.id === input.employeeId
+      ? {
+          ...employee,
+          name: input.name,
+          email: normalizedEmail,
+          title: input.title,
+          profilePhotoUrl:
+            input.profilePhotoUrl === undefined ? employee.profilePhotoUrl : input.profilePhotoUrl,
+        }
+      : employee,
+  );
+
+  await appendAuditLog({
+    actorId: input.actorId,
+    action: "employee.profile_updated",
+    targetType: "employee",
+    targetId: input.employeeId,
+    metadata: {
+      email: normalizedEmail,
+      hasProfilePhoto:
+        input.profilePhotoUrl === undefined ? Boolean(existing.profilePhotoUrl) : Boolean(input.profilePhotoUrl),
+    },
+  });
+
+  const updated = employeeTable.find((employee) => employee.id === input.employeeId);
+
+  if (!updated) {
+    throw new Error("Employee not found.");
+  }
+
+  return cloneEmployee(updated);
+}
+
+export async function updateEmployeeRole(input: {
+  actorId: string;
+  employeeId: string;
+  role: Role;
+}): Promise<EmployeeRecord> {
+  const employee = employeeTable.find((item) => item.id === input.employeeId);
+
+  if (!employee) {
+    throw new Error("Employee not found.");
+  }
+
+  employeeTable = employeeTable.map((item) =>
+    item.id === input.employeeId ? { ...item, role: input.role } : item,
+  );
+
+  await appendAuditLog({
+    actorId: input.actorId,
+    action: "employee.role_updated",
+    targetType: "employee",
+    targetId: input.employeeId,
+    metadata: {
+      role: input.role,
+    },
+  });
+
+  const updated = employeeTable.find((item) => item.id === input.employeeId);
+
+  if (!updated) {
+    throw new Error("Employee not found.");
+  }
+
+  return cloneEmployee(updated);
+}
+
+export async function recordPasswordResetRequest(input: {
+  actorId: string;
+  employeeId: string;
+}): Promise<void> {
+  await appendAuditLog({
+    actorId: input.actorId,
+    action: "employee.password_reset_requested",
+    targetType: "employee",
+    targetId: input.employeeId,
+    metadata: {},
+  });
+}
+
+export async function updateInvoiceStatus(input: {
+  actorId: string;
+  invoiceId: string;
+  status: InvoiceStatus;
+}): Promise<InvoiceRecord> {
+  const existing = invoiceTable.find((invoice) => invoice.id === input.invoiceId);
+
+  if (!existing) {
+    throw new Error("Invoice not found.");
+  }
+
+  invoiceTable = invoiceTable.map((invoice) =>
+    invoice.id === input.invoiceId ? { ...invoice, status: input.status } : invoice,
+  );
+
+  await appendAuditLog({
+    actorId: input.actorId,
+    action: "invoice.status_updated",
+    targetType: "invoice",
+    targetId: input.invoiceId,
+    metadata: {
+      status: input.status,
+    },
+  });
+
+  const updated = invoiceTable.find((invoice) => invoice.id === input.invoiceId);
+
+  if (!updated) {
+    throw new Error("Invoice not found.");
+  }
+
+  return { ...updated };
+}
+
+export async function recordInvoiceDownload(input: {
+  actorId: string;
+  invoiceId: string;
+}): Promise<void> {
+  await appendAuditLog({
+    actorId: input.actorId,
+    action: "invoice.download_requested",
+    targetType: "invoice",
+    targetId: input.invoiceId,
+    metadata: {},
+  });
+}
+
+export async function recordInvoiceExport(input: {
+  actorId: string;
+  invoiceIds: string[];
+}): Promise<void> {
+  await appendAuditLog({
+    actorId: input.actorId,
+    action: "invoice.exported",
+    targetType: "invoice_batch",
+    targetId: `export-${Date.now()}`,
+    metadata: {
+      count: input.invoiceIds.length,
+    },
+  });
 }
 
 export async function recordDocumentDownload(input: {

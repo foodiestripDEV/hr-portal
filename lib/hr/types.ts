@@ -6,9 +6,11 @@ export type LeaveKind = "holiday" | "sick" | "unpaid";
 
 export type LeaveStatus = "pending" | "approved" | "rejected";
 
-export type DocumentKind = "contract" | "invoice";
+export type DocumentKind = "contract" | "invoice" | "official" | "private";
 
-export type InvoiceStatus = "draft" | "finalized";
+export type DocumentStatus = "pending" | "approved" | "rejected";
+
+export type InvoiceStatus = "paid" | "unpaid";
 
 export type AuditAction =
   | "leave.requested"
@@ -16,6 +18,12 @@ export type AuditAction =
   | "leave.rejected"
   | "document.download_requested"
   | "invoice.batch_generated"
+  | "invoice.status_updated"
+  | "invoice.download_requested"
+  | "invoice.exported"
+  | "employee.profile_updated"
+  | "employee.role_updated"
+  | "employee.password_reset_requested"
   | "slack.interaction_received";
 
 export type EmployeeRecord = {
@@ -28,6 +36,7 @@ export type EmployeeRecord = {
   location: string;
   managerId: string | null;
   startDate: string;
+  profilePhotoUrl: string | null;
   holidayAllowance: number;
   holidayRemaining: number;
   sickDaysUsed: number;
@@ -58,6 +67,7 @@ export type DocumentRecord = {
   id: string;
   employeeId: string;
   kind: DocumentKind;
+  status: DocumentStatus;
   title: string;
   period: string;
   amount: number | null;
@@ -81,7 +91,7 @@ export type AuditLogRecord = {
   id: string;
   actorId: string;
   action: AuditAction;
-  targetType: "leave_request" | "document" | "invoice_batch" | "slack";
+  targetType: "leave_request" | "document" | "invoice" | "invoice_batch" | "employee" | "slack";
   targetId: string;
   createdAt: string;
   metadata: Record<string, string | number | boolean | null>;
@@ -89,7 +99,7 @@ export type AuditLogRecord = {
 
 export type Viewer = Pick<
   EmployeeRecord,
-  "id" | "name" | "email" | "role" | "title" | "department"
+  "id" | "name" | "email" | "role" | "title" | "department" | "profilePhotoUrl"
 >;
 
 export type SafeEmployeeDTO = {
@@ -101,12 +111,18 @@ export type SafeEmployeeDTO = {
   location: string;
   managerName: string | null;
   startDate: string;
+  role: Role;
+  profilePhotoUrl: string | null;
 };
 
 export type LeaveRequestDTO = {
   id: string;
   employeeName: string;
+  employeeId: string;
+  employeeEmail: string;
   employeeTitle: string;
+  employeeHolidayAllowance: number;
+  employeeHolidayRemaining: number;
   kind: LeaveKind;
   status: LeaveStatus;
   from: string;
@@ -120,7 +136,9 @@ export type LeaveRequestDTO = {
 export type DocumentDTO = {
   id: string;
   employeeName: string;
+  employeeId: string;
   kind: DocumentKind;
+  status: DocumentStatus;
   title: string;
   period: string;
   amountLabel: string | null;

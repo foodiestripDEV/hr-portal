@@ -107,6 +107,8 @@ function toSafeEmployeeDTO(
     location: employee.location,
     managerName: manager?.name ?? null,
     startDate: employee.startDate,
+    role: employee.role,
+    profilePhotoUrl: employee.profilePhotoUrl,
   };
 }
 
@@ -120,8 +122,12 @@ function toLeaveRequestDTO(
 
   return {
     id: request.id,
+    employeeId: employee?.id ?? request.employeeId,
     employeeName: employee?.name ?? "Unknown employee",
+    employeeEmail: employee?.email ?? "unknown@example.com",
     employeeTitle: employee?.title ?? "Unknown role",
+    employeeHolidayAllowance: employee?.holidayAllowance ?? 0,
+    employeeHolidayRemaining: employee?.holidayRemaining ?? 0,
     kind: request.kind,
     status: request.status,
     from: request.from,
@@ -141,8 +147,10 @@ function toDocumentDTO(
 
   return {
     id: document.id,
+    employeeId: document.employeeId,
     employeeName: employee?.name ?? "Unknown employee",
     kind: document.kind,
+    status: document.status,
     title: document.title,
     period: document.period,
     amountLabel:

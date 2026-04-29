@@ -2,18 +2,35 @@ import {
   canCreateLeaveRequest,
   canDecideLeaveRequest,
   canGenerateInvoices,
+  canManageEmployees,
+  canManageInvoices,
   canViewDocument,
+  canViewFinancialProfile,
 } from "./access-control";
 import {
   createLeaveRequest,
   decideLeaveRequest,
   findDocumentById,
   findEmployeeById,
+  findInvoiceById,
   findLeaveRequestById,
   generateMonthlyInvoices,
   recordDocumentDownload,
+  recordInvoiceDownload,
+  recordPasswordResetRequest,
+  updateEmployeeProfile,
+  updateEmployeeRole,
+  updateInvoiceStatus,
 } from "./repository";
-import type { ActionResult, InvoiceRecord, LeaveKind, LeaveStatus, Viewer } from "./types";
+import type {
+  ActionResult,
+  InvoiceRecord,
+  InvoiceStatus,
+  LeaveKind,
+  LeaveStatus,
+  Role,
+  Viewer,
+} from "./types";
 
 export async function createLeaveRequestForViewer(input: {
   viewer: Viewer;
@@ -125,6 +142,61 @@ export async function createDocumentDownloadForViewer(input: {
   };
 }
 
+export async function updatePersonalInfoForViewer(input: {
+  viewer: Viewer;
+  name: string | null;
+  email: string | null;
+  title: string | null;
+  profilePhoto: File | null;
+  removeAvatar: boolean;
+}): Promise<ActionResult> {
+  const employee = await findEmployeeById(input.viewer.id);
+
+  if (!employee) {
+    return { ok: false, message: "Employee not found." };
+  }
+
+  const name = input.name?.trim() ?? "";
+  const email = input.email?.trim().toLowerCase() ?? "";
+  const title = input.title?.trim() ?? "";
+
+  if (!name || !email || !title) {
+    return { ok: false, message: "Name, email, and job title are required." };
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, message: "Invalid email address." };
+  }
+
+  let profilePhotoUrl: string | null | undefined;
+
+  if (input.removeAvatar) {
+    profilePhotoUrl = null;
+  } else if (input.profilePhoto && input.profilePhoto.size > 0) {
+    if (!input.profilePhoto.type.startsWith("image/")) {
+      return { ok: false, message: "Profile photo must be an image file." };
+    }
+
+    if (input.profilePhoto.size > 2 * 1024 * 1024) {
+      return { ok: false, message: "Profile photo must be 2 MB or smaller." };
+    }
+
+    const bytes = Buffer.from(await input.profilePhoto.arrayBuffer());
+    profilePhotoUrl = `data:${input.profilePhoto.type};base64,${bytes.toString("base64")}`;
+  }
+
+  await updateEmployeeProfile({
+    actorId: input.viewer.id,
+    employeeId: employee.id,
+    name,
+    email,
+    title,
+    profilePhotoUrl,
+  });
+
+  return { ok: true, message: "Personal information updated." };
+}
+
 export async function generateInvoicesForViewer(input: {
   viewer: Viewer;
   period: string | null;
@@ -153,8 +225,120 @@ export async function generateInvoicesForViewer(input: {
 
   return {
     ok: true,
-    message: `${invoices.length} draft invoices generated.`,
+    message: `${invoices.length} unpaid invoices generated.`,
     invoices,
+  };
+}
+
+export async function updateEmployeeRoleForViewer(input: {
+  viewer: Viewer;
+  employeeId: string;
+  role: string;
+}): Promise<ActionResult> {
+  if (!canManageEmployees(input.viewer)) {
+    return { ok: false, message: "Only HR/CEO can update employee roles." };
+  }
+
+  if (!isRole(input.role)) {
+    return { ok: false, message: "Invalid role." };
+  }
+
+  await updateEmployeeRole({
+    actorId: input.viewer.id,
+    employeeId: input.employeeId,
+    role: input.role,
+  });
+
+  return { ok: true, message: "Employee role updated." };
+}
+
+export async function requestPasswordResetForViewer(input: {
+  viewer: Viewer;
+  employeeId: string;
+}): Promise<ActionResult> {
+  if (!canManageEmployees(input.viewer)) {
+    return { ok: false, message: "Only HR/CEO can reset employee passwords." };
+  }
+
+  const employee = await findEmployeeById(input.employeeId);
+
+  if (!employee) {
+    return { ok: false, message: "Employee not found." };
+  }
+
+  await recordPasswordResetRequest({
+    actorId: input.viewer.id,
+    employeeId: employee.id,
+  });
+
+  return { ok: true, message: "Password reset request recorded." };
+}
+
+export async function updateInvoiceStatusForViewer(input: {
+  viewer: Viewer;
+  invoiceId: string;
+  status: string;
+}): Promise<ActionResult> {
+  if (!canManageInvoices(input.viewer)) {
+    return { ok: false, message: "Only HR/CEO can update invoices." };
+  }
+
+  if (!isInvoiceStatus(input.status)) {
+    return { ok: false, message: "Invalid invoice status." };
+  }
+
+  await updateInvoiceStatus({
+    actorId: input.viewer.id,
+    invoiceId: input.invoiceId,
+    status: input.status,
+  });
+
+  return { ok: true, message: "Invoice status updated." };
+}
+
+export async function createInvoiceDownloadForViewer(input: {
+  viewer: Viewer;
+  invoiceId: string;
+}): Promise<
+  | {
+      ok: true;
+      filename: string;
+      body: string;
+    }
+  | {
+      ok: false;
+      message: string;
+    }
+> {
+  const invoice = await findInvoiceById(input.invoiceId);
+
+  if (!invoice) {
+    return { ok: false, message: "Invoice not found." };
+  }
+
+  const employee = await findEmployeeById(invoice.employeeId);
+
+  if (!employee || !canViewFinancialProfile(input.viewer, employee)) {
+    return { ok: false, message: "You are not allowed to download this invoice." };
+  }
+
+  await recordInvoiceDownload({
+    actorId: input.viewer.id,
+    invoiceId: invoice.id,
+  });
+
+  return {
+    ok: true,
+    filename: `${invoice.id}.txt`,
+    body: [
+      "Invoice download placeholder",
+      `Invoice: ${invoice.id}`,
+      `Employee: ${employee.name}`,
+      `Period: ${invoice.period}`,
+      `Status: ${invoice.status}`,
+      `Amount: ${invoice.amount} ${invoice.currency}`,
+      `Storage key: ${invoice.pdfStorageKey}`,
+    ].join("\n"),
   };
 }
 
@@ -164,6 +348,14 @@ function isLeaveKind(value: string | null): value is LeaveKind {
 
 function isLeaveDecision(value: string): value is Extract<LeaveStatus, "approved" | "rejected"> {
   return value === "approved" || value === "rejected";
+}
+
+function isRole(value: string): value is Role {
+  return value === "master_admin" || value === "manager" || value === "employee";
+}
+
+function isInvoiceStatus(value: string): value is InvoiceStatus {
+  return value === "paid" || value === "unpaid";
 }
 
 function parseDateInput(value: string | null): Date | null {
