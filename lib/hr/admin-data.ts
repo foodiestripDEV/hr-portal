@@ -76,9 +76,14 @@ export type AdminInvoiceRow = {
   employeeEmail: string;
   period: string;
   amountLabel: string;
+  amount: number;
+  currency: "EUR" | "USD" | "GBP";
   status: InvoiceStatus;
   generatedAt: string;
   pdfStorageKey: string;
+  presetName: string;
+  lineItemDescription: string;
+  isPartTime: boolean;
 };
 
 export type AdminUserRow = {
@@ -95,6 +100,15 @@ export type AdminUserRow = {
   sickDaysUsed: number;
   unpaidLeaveUsed: number;
   profilePhotoUrl: string | null;
+};
+
+export type InvoiceGenerationPresetRow = {
+  employeeId: string;
+  employeeName: string;
+  presetName: string;
+  description: string;
+  defaultAmountLabel: string;
+  defaultAmount: number;
 };
 
 export function parseRequestFilters(params: QueryParams): AdminRequestFilters {
@@ -223,9 +237,14 @@ export async function getAdminInvoiceRows(
         employeeEmail: employee?.email ?? "unknown@example.com",
         period: invoice.period,
         amountLabel: formatMoney(invoice.amount, invoice.currency),
+        amount: invoice.amount,
+        currency: invoice.currency,
         status: invoice.status,
         generatedAt: invoice.generatedAt,
         pdfStorageKey: invoice.pdfStorageKey,
+        presetName: invoice.presetName,
+        lineItemDescription: invoice.lineItemDescription,
+        isPartTime: employee?.financialProfile.employmentType === "part_time",
       };
     })
     .filter((row) => {
@@ -260,6 +279,24 @@ export async function getAdminUserRows(): Promise<AdminUserRow[]> {
       profilePhotoUrl: employee.profilePhotoUrl,
     };
   });
+}
+
+export async function getInvoiceGenerationPresetRows(): Promise<InvoiceGenerationPresetRow[]> {
+  const employees = await listEmployees();
+
+  return employees
+    .filter((employee) => employee.financialProfile.invoiceCycle === "monthly")
+    .map((employee) => ({
+      employeeId: employee.id,
+      employeeName: employee.name,
+      presetName: employee.financialProfile.invoicePreset.name,
+      description: employee.financialProfile.invoicePreset.description,
+      defaultAmountLabel: formatMoney(
+        employee.financialProfile.invoicePreset.defaultAmount,
+        employee.financialProfile.currency,
+      ),
+      defaultAmount: employee.financialProfile.invoicePreset.defaultAmount,
+    }));
 }
 
 export function getOne(value: string | string[] | undefined): string {
@@ -334,7 +371,7 @@ function isDocumentStatus(value: string): value is DocumentStatus {
 }
 
 function isInvoiceStatus(value: string): value is InvoiceStatus {
-  return value === "paid" || value === "unpaid";
+  return value === "pending" || value === "paid";
 }
 
 function isDocumentKind(value: string): value is DocumentKind {

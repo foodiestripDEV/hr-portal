@@ -37,8 +37,8 @@ export const documentStatusLabels: Record<DocumentStatus, string> = {
 };
 
 export const invoiceStatusLabels: Record<InvoiceStatus, string> = {
+  pending: "Pending",
   paid: "Paid",
-  unpaid: "Unpaid",
 };
 
 export const documentKindLabels: Record<DocumentKind, string> = {
@@ -308,6 +308,5 @@ const statusClasses: Record<LeaveStatus | DocumentStatus | InvoiceStatus, string
   approved: "border-emerald-200 bg-emerald-50 text-emerald-700",
   paid: "border-emerald-200 bg-emerald-50 text-emerald-700",
   pending: "border-amber-200 bg-amber-50 text-amber-700",
-  unpaid: "border-amber-200 bg-amber-50 text-amber-700",
   rejected: "border-rose-200 bg-rose-50 text-rose-700",
 };

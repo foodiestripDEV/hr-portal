@@ -10,7 +10,7 @@ export type DocumentKind = "contract" | "invoice" | "official" | "private";
 
 export type DocumentStatus = "pending" | "approved" | "rejected";
 
-export type InvoiceStatus = "paid" | "unpaid";
+export type InvoiceStatus = "pending" | "paid";
 
 export type AuditAction =
   | "leave.requested"
@@ -46,6 +46,12 @@ export type EmployeeRecord = {
     monthlyRate: number;
     invoiceCycle: "monthly";
     contractType: "employment" | "contractor";
+    employmentType: "full_time" | "part_time";
+    invoicePreset: {
+      name: string;
+      description: string;
+      defaultAmount: number;
+    };
   };
 };
 
@@ -80,11 +86,16 @@ export type InvoiceRecord = {
   id: string;
   employeeId: string;
   period: string;
+  periodMonth: number;
+  periodYear: number;
   amount: number;
   currency: "EUR" | "USD" | "GBP";
   status: InvoiceStatus;
   generatedAt: string;
   pdfStorageKey: string;
+  presetName: string;
+  lineItemDescription: string;
+  updatedAt: string | null;
 };
 
 export type AuditLogRecord = {
@@ -145,6 +156,16 @@ export type DocumentDTO = {
   issuedAt: string;
 };
 
+export type InvoiceDTO = {
+  id: string;
+  employeeName: string;
+  employeeId: string;
+  period: string;
+  amountLabel: string;
+  status: InvoiceStatus;
+  generatedAt: string;
+};
+
 export type DashboardViewModel = {
   activeRoleSlug: RoleSlug;
   viewer: Viewer;
@@ -166,6 +187,7 @@ export type DashboardViewModel = {
   };
   leaveRequests: LeaveRequestDTO[];
   documents: DocumentDTO[];
+  invoices: InvoiceDTO[];
   directory: SafeEmployeeDTO[];
   teamCalendar: Array<{
     id: string;

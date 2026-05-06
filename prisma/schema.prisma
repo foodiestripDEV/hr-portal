@@ -40,7 +40,7 @@ enum DocumentStatus {
 
 enum InvoiceStatus {
   PAID
-  UNPAID
+  PENDING
 }
 
 model Employee {
@@ -94,6 +94,10 @@ model FinancialProfile {
   monthlyRate  Int
   invoiceCycle String   @default("monthly")
   contractType String
+  employmentType String  @default("full_time")
+  invoicePresetName String
+  invoicePresetDescription String
+  invoicePresetDefaultAmount Int
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -154,15 +158,19 @@ model Invoice {
   employeeId    String
   employee      Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   period        String
+  periodMonth   Int
+  periodYear    Int
   amount        Int
   currency      String
-  status        InvoiceStatus @default(UNPAID)
+  status        InvoiceStatus @default(PENDING)
   generatedAt   DateTime      @default(now())
   finalizedAt   DateTime?
   pdfStorageKey String
+  presetName    String
+  lineItemDescription String
   items         InvoiceItem[]
 
-  @@unique([employeeId, period])
+  @@unique([employeeId, periodMonth, periodYear])
   @@index([status])
 }
 

@@ -8,7 +8,13 @@ import {
 } from "@/app/actions/hr";
 import { getDashboardViewModel } from "@/lib/hr/dashboard";
 import { requireCurrentViewer } from "@/lib/hr/session";
-import type { DashboardViewModel, DocumentKind, LeaveKind, LeaveStatus } from "@/lib/hr/types";
+import type {
+  DashboardViewModel,
+  DocumentKind,
+  InvoiceStatus,
+  LeaveKind,
+  LeaveStatus,
+} from "@/lib/hr/types";
 
 const navItems = ["Dashboard", "Requests", "Calendar", "Documents", "Invoices", "People", "Admin"];
 
@@ -37,6 +43,16 @@ const documentLabels: Record<DocumentKind, string> = {
   invoice: "Invoice",
   official: "Official",
   private: "Private",
+};
+
+const invoiceLabels: Record<InvoiceStatus, string> = {
+  pending: "Pending",
+  paid: "Paid",
+};
+
+const invoiceStatusClasses: Record<InvoiceStatus, string> = {
+  pending: "border-amber-200 bg-amber-50 text-amber-700",
+  paid: "border-emerald-200 bg-emerald-50 text-emerald-700",
 };
 
 export default async function Home() {
@@ -440,6 +456,48 @@ export default async function Home() {
                 )}
               </div>
             </section>
+
+            <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm" id="invoices">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold tracking-normal">Invoices</h2>
+                <Icon name="invoices" />
+              </div>
+              <div className="mt-5 grid gap-3">
+                {model.invoices.length > 0 ? (
+                  model.invoices.map((invoice) => (
+                    <article className="rounded-lg border border-zinc-200 p-4" key={invoice.id}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold">{invoice.period}</p>
+                          <p className="mt-1 text-xs text-zinc-500">{invoice.employeeName}</p>
+                        </div>
+                        <span
+                          className={cx(
+                            "inline-flex rounded-lg border px-2.5 py-1 text-xs font-semibold",
+                            invoiceStatusClasses[invoice.status],
+                          )}
+                        >
+                          {invoiceLabels[invoice.status]}
+                        </span>
+                      </div>
+                      <div className="mt-4 flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-zinc-950">{invoice.amountLabel}</p>
+                        <a
+                          className="rounded-lg border border-zinc-300 px-2.5 py-1 text-xs font-semibold text-zinc-700"
+                          href={`/api/invoices/${invoice.id}/download`}
+                        >
+                          Download
+                        </a>
+                      </div>
+                    </article>
+                  ))
+                ) : (
+                  <p className="rounded-lg border border-zinc-200 p-4 text-sm text-zinc-500">
+                    No invoices visible for this role.
+                  </p>
+                )}
+              </div>
+            </section>
           </div>
 
           <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_420px]">
@@ -470,11 +528,24 @@ export default async function Home() {
               </div>
               <form action={generateInvoicesAction} className="mt-5 grid gap-3">
                 <label className="grid gap-1 text-sm font-medium text-zinc-700">
-                  Period
+                  Month
                   <input
                     className="h-10 rounded-lg border border-zinc-300 px-3 text-sm text-zinc-950"
-                    defaultValue="April 2026"
-                    name="period"
+                    defaultValue={String(new Date().getUTCMonth() + 1)}
+                    max="12"
+                    min="1"
+                    name="month"
+                    type="number"
+                  />
+                </label>
+                <label className="grid gap-1 text-sm font-medium text-zinc-700">
+                  Year
+                  <input
+                    className="h-10 rounded-lg border border-zinc-300 px-3 text-sm text-zinc-950"
+                    defaultValue={String(new Date().getUTCFullYear())}
+                    min="2000"
+                    name="year"
+                    type="number"
                   />
                 </label>
                 <button className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-zinc-950 px-3 text-sm font-semibold text-white">

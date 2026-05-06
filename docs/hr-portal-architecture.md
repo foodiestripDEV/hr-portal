@@ -58,11 +58,11 @@ Admin functionality should be split into focused pages instead of relying only o
 - `/admin/requests`: leave and request queue with status, employee, approver, and date range filters.
 - `/admin/calendar`: month calendar view showing who is off on which day, with approved and pending requests styled differently.
 - `/admin/documents`: private document register with status, employee, date range, and document type filters.
-- `/admin/invoices`: invoice register with employee, date range, paid/unpaid status filters, period generation, edit, download, multi-select, and CSV export.
+- `/admin/invoices`: invoice register with employee, date range, pending/paid status filters, month/year period generation, part-time amount overrides, edit, download, multi-select, and CSV export.
 
 Admin filters required across the main operational pages:
 
-- Status filter: pending, approved, rejected for requests/documents; paid/unpaid for invoices.
+- Status filter: pending, approved, rejected for requests/documents; pending/paid for invoices.
 - Person filter: search by employee name or email.
 - Date filter: request leave dates, document issued date, or invoice generated date.
 
@@ -90,7 +90,7 @@ Admin user management requirements:
 
 Invoice requirements:
 
-- Filter by person, generated date range, and paid/unpaid status.
+- Filter by person, generated date range, and pending/paid status.
 - Generate invoices for a selected period.
 - Edit invoice status.
 - Download invoice files.
@@ -120,7 +120,7 @@ Invoice requirements:
 - `app/api/leave-requests/route.ts`: leave list and create endpoint.
 - `app/api/leave-requests/[id]/decision/route.ts`: manager/admin decision endpoint.
 - `app/api/documents/[id]/download/route.ts`: authorized private download URL endpoint.
-- `app/api/invoices/generate/route.ts`: admin-only unpaid invoice generation endpoint.
+- `app/api/invoices/generate/route.ts`: admin-only pending invoice period generation endpoint.
 - `app/api/invoices/[id]/download/route.ts`: authorized invoice download endpoint.
 - `app/api/invoices/export/route.ts`: admin-only filtered or selected invoice CSV export endpoint.
 - `app/api/slack/interactions/route.ts`: Slack interaction callback with request signature verification.

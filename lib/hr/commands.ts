@@ -18,9 +18,9 @@ import {
   recordDocumentDownload,
   recordInvoiceDownload,
   recordPasswordResetRequest,
+  updateInvoiceDetails,
   updateEmployeeProfile,
   updateEmployeeRole,
-  updateInvoiceStatus,
 } from "./repository";
 import type {
   ActionResult,
@@ -200,6 +200,9 @@ export async function updatePersonalInfoForViewer(input: {
 export async function generateInvoicesForViewer(input: {
   viewer: Viewer;
   period: string | null;
+  month?: number | null;
+  year?: number | null;
+  amountOverrides?: Record<string, number>;
 }): Promise<
   | {
       ok: true;
@@ -208,24 +211,30 @@ export async function generateInvoicesForViewer(input: {
     }
   | ActionResult
 > {
-  const period = input.period?.trim();
-
   if (!canGenerateInvoices(input.viewer)) {
     return { ok: false, message: "Only HR/CEO can generate invoices." };
   }
 
-  if (!period) {
-    return { ok: false, message: "Invoice period is required." };
+  const periodParts = resolveInvoicePeriod({
+    period: input.period,
+    month: input.month,
+    year: input.year,
+  });
+
+  if (!periodParts) {
+    return { ok: false, message: "Valid invoice month and year are required." };
   }
 
   const invoices = await generateMonthlyInvoices({
     actorId: input.viewer.id,
-    period,
+    month: periodParts.month,
+    year: periodParts.year,
+    amountOverrides: input.amountOverrides,
   });
 
   return {
     ok: true,
-    message: `${invoices.length} unpaid invoices generated.`,
+    message: `${invoices.length} pending invoices generated.`,
     invoices,
   };
 }
@@ -278,6 +287,7 @@ export async function updateInvoiceStatusForViewer(input: {
   viewer: Viewer;
   invoiceId: string;
   status: string;
+  amount?: number | null;
 }): Promise<ActionResult> {
   if (!canManageInvoices(input.viewer)) {
     return { ok: false, message: "Only HR/CEO can update invoices." };
@@ -287,10 +297,23 @@ export async function updateInvoiceStatusForViewer(input: {
     return { ok: false, message: "Invalid invoice status." };
   }
 
-  await updateInvoiceStatus({
+  const invoice = await findInvoiceById(input.invoiceId);
+
+  if (!invoice) {
+    return { ok: false, message: "Invoice not found." };
+  }
+
+  const amount = input.amount !== null && input.amount !== undefined ? input.amount : undefined;
+
+  if (amount !== undefined && (!Number.isFinite(amount) || amount < 0)) {
+    return { ok: false, message: "Invalid invoice amount." };
+  }
+
+  await updateInvoiceDetails({
     actorId: input.viewer.id,
     invoiceId: input.invoiceId,
     status: input.status,
+    amount,
   });
 
   return { ok: true, message: "Invoice status updated." };
@@ -355,7 +378,50 @@ function isRole(value: string): value is Role {
 }
 
 function isInvoiceStatus(value: string): value is InvoiceStatus {
-  return value === "paid" || value === "unpaid";
+  return value === "pending" || value === "paid";
+}
+
+function resolveInvoicePeriod(input: {
+  period: string | null;
+  month?: number | null;
+  year?: number | null;
+}): { month: number; year: number } | null {
+  if (isValidInvoiceMonth(input.month) && isValidInvoiceYear(input.year)) {
+    return { month: input.month, year: input.year };
+  }
+
+  const period = input.period?.trim();
+
+  if (!period) {
+    return null;
+  }
+
+  const isoMatch = /^(\d{4})-(\d{1,2})$/.exec(period);
+
+  if (isoMatch) {
+    const year = Number(isoMatch[1]);
+    const month = Number(isoMatch[2]);
+    return isValidInvoiceMonth(month) && isValidInvoiceYear(year) ? { month, year } : null;
+  }
+
+  const parsed = new Date(`${period} 1, 00:00:00 UTC`);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  const month = parsed.getUTCMonth() + 1;
+  const year = parsed.getUTCFullYear();
+
+  return isValidInvoiceYear(year) ? { month, year } : null;
+}
+
+function isValidInvoiceMonth(value: number | null | undefined): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 12;
+}
+
+function isValidInvoiceYear(value: number | null | undefined): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 2000 && value <= 2100;
 }
 
 function parseDateInput(value: string | null): Date | null {

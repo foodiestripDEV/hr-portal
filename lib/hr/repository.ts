@@ -1,3 +1,5 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { documents, employees, invoices, leaveRequests } from "./mock-data";
 import type {
   AuditAction,
@@ -17,6 +19,8 @@ let leaveRequestTable = leaveRequests.map((request) => ({ ...request }));
 const documentTable = documents.map((document) => ({ ...document }));
 let invoiceTable: InvoiceRecord[] = invoices.map((invoice) => ({ ...invoice }));
 let auditLogTable: AuditLogRecord[] = [];
+const dataDirectory = path.join(process.cwd(), ".data");
+const invoiceStorePath = path.join(dataDirectory, "invoices.json");
 
 export async function listEmployees(): Promise<EmployeeRecord[]> {
   return employeeTable.map(cloneEmployee);
@@ -31,6 +35,7 @@ export async function listDocuments(): Promise<DocumentRecord[]> {
 }
 
 export async function listInvoices(): Promise<InvoiceRecord[]> {
+  await loadInvoiceTable();
   return invoiceTable.map((invoice) => ({ ...invoice }));
 }
 
@@ -62,6 +67,7 @@ export async function findDocumentById(id: string): Promise<DocumentRecord | und
 }
 
 export async function findInvoiceById(id: string): Promise<InvoiceRecord | undefined> {
+  await loadInvoiceTable();
   const invoice = invoiceTable.find((item) => item.id === id);
   return invoice ? { ...invoice } : undefined;
 }
@@ -159,23 +165,35 @@ export async function decideLeaveRequest(input: {
 
 export async function generateMonthlyInvoices(input: {
   actorId: string;
-  period: string;
+  month: number;
+  year: number;
+  amountOverrides?: Record<string, number>;
 }): Promise<InvoiceRecord[]> {
+  await loadInvoiceTable();
   const generatedAt = today();
+  const period = formatInvoicePeriod(input.month, input.year);
+  const normalizedPeriod = `${input.year}-${String(input.month).padStart(2, "0")}`;
   const invoices = employeeTable
-    .filter((employee) => employee.financialProfile.contractType === "contractor")
+    .filter((employee) => employee.financialProfile.invoiceCycle === "monthly")
     .map((employee) => {
-      const normalizedPeriod = input.period.toLowerCase().replaceAll(" ", "-");
+      const preset = employee.financialProfile.invoicePreset;
+      const overrideAmount = input.amountOverrides?.[employee.id];
+      const amount = overrideAmount !== undefined ? overrideAmount : preset.defaultAmount;
 
       return {
         id: `inv-${employee.id}-${normalizedPeriod}`,
         employeeId: employee.id,
-        period: input.period,
-        amount: employee.financialProfile.monthlyRate,
+        period,
+        periodMonth: input.month,
+        periodYear: input.year,
+        amount,
         currency: employee.financialProfile.currency,
-        status: "unpaid" as const,
+        status: "pending" as const,
         generatedAt,
         pdfStorageKey: `invoices/${employee.id}/${normalizedPeriod}.pdf`,
+        presetName: preset.name,
+        lineItemDescription: preset.description,
+        updatedAt: null,
       };
     });
 
@@ -184,14 +202,17 @@ export async function generateMonthlyInvoices(input: {
     ...invoices,
     ...invoiceTable.filter((invoice) => !invoiceIds.has(invoice.id)),
   ];
+  await saveInvoiceTable();
 
   await appendAuditLog({
     actorId: input.actorId,
     action: "invoice.batch_generated",
     targetType: "invoice_batch",
-    targetId: input.period,
+    targetId: normalizedPeriod,
     metadata: {
-      period: input.period,
+      period,
+      month: input.month,
+      year: input.year,
       count: invoices.length,
     },
   });
@@ -308,6 +329,7 @@ export async function updateInvoiceStatus(input: {
   invoiceId: string;
   status: InvoiceStatus;
 }): Promise<InvoiceRecord> {
+  await loadInvoiceTable();
   const existing = invoiceTable.find((invoice) => invoice.id === input.invoiceId);
 
   if (!existing) {
@@ -315,8 +337,11 @@ export async function updateInvoiceStatus(input: {
   }
 
   invoiceTable = invoiceTable.map((invoice) =>
-    invoice.id === input.invoiceId ? { ...invoice, status: input.status } : invoice,
+    invoice.id === input.invoiceId
+      ? { ...invoice, status: input.status, updatedAt: new Date().toISOString() }
+      : invoice,
   );
+  await saveInvoiceTable();
 
   await appendAuditLog({
     actorId: input.actorId,
@@ -335,6 +360,67 @@ export async function updateInvoiceStatus(input: {
   }
 
   return { ...updated };
+}
+
+export async function updateInvoiceAmount(input: {
+  actorId: string;
+  invoiceId: string;
+  amount: number;
+}): Promise<InvoiceRecord> {
+  await loadInvoiceTable();
+  const existing = invoiceTable.find((invoice) => invoice.id === input.invoiceId);
+
+  if (!existing) {
+    throw new Error("Invoice not found.");
+  }
+
+  invoiceTable = invoiceTable.map((invoice) =>
+    invoice.id === input.invoiceId
+      ? { ...invoice, amount: input.amount, updatedAt: new Date().toISOString() }
+      : invoice,
+  );
+  await saveInvoiceTable();
+
+  await appendAuditLog({
+    actorId: input.actorId,
+    action: "invoice.status_updated",
+    targetType: "invoice",
+    targetId: input.invoiceId,
+    metadata: {
+      amount: input.amount,
+    },
+  });
+
+  const updated = invoiceTable.find((invoice) => invoice.id === input.invoiceId);
+
+  if (!updated) {
+    throw new Error("Invoice not found.");
+  }
+
+  return { ...updated };
+}
+
+export async function updateInvoiceDetails(input: {
+  actorId: string;
+  invoiceId: string;
+  status: InvoiceStatus;
+  amount?: number;
+}): Promise<InvoiceRecord> {
+  let invoice = await updateInvoiceStatus({
+    actorId: input.actorId,
+    invoiceId: input.invoiceId,
+    status: input.status,
+  });
+
+  if (input.amount !== undefined) {
+    invoice = await updateInvoiceAmount({
+      actorId: input.actorId,
+      invoiceId: input.invoiceId,
+      amount: input.amount,
+    });
+  }
+
+  return invoice;
 }
 
 export async function recordInvoiceDownload(input: {
@@ -406,10 +492,72 @@ async function appendAuditLog(input: Omit<AuditLogRecord, "id" | "createdAt">): 
 function cloneEmployee(employee: EmployeeRecord): EmployeeRecord {
   return {
     ...employee,
-    financialProfile: { ...employee.financialProfile },
+    financialProfile: {
+      ...employee.financialProfile,
+      invoicePreset: { ...employee.financialProfile.invoicePreset },
+    },
   };
 }
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+async function loadInvoiceTable(): Promise<void> {
+  try {
+    const raw = await readFile(invoiceStorePath, "utf8");
+    const parsed = JSON.parse(raw);
+
+    if (Array.isArray(parsed)) {
+      invoiceTable = parsed.filter(isInvoiceRecord);
+    }
+  } catch (error) {
+    if (!isMissingFileError(error)) {
+      throw error;
+    }
+  }
+}
+
+async function saveInvoiceTable(): Promise<void> {
+  await mkdir(dataDirectory, { recursive: true });
+  await writeFile(invoiceStorePath, `${JSON.stringify(invoiceTable, null, 2)}\n`, "utf8");
+}
+
+function isInvoiceRecord(value: unknown): value is InvoiceRecord {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const invoice = value as Partial<InvoiceRecord>;
+  return (
+    typeof invoice.id === "string" &&
+    typeof invoice.employeeId === "string" &&
+    typeof invoice.period === "string" &&
+    typeof invoice.periodMonth === "number" &&
+    typeof invoice.periodYear === "number" &&
+    typeof invoice.amount === "number" &&
+    (invoice.currency === "EUR" || invoice.currency === "USD" || invoice.currency === "GBP") &&
+    (invoice.status === "pending" || invoice.status === "paid") &&
+    typeof invoice.generatedAt === "string" &&
+    typeof invoice.pdfStorageKey === "string" &&
+    typeof invoice.presetName === "string" &&
+    typeof invoice.lineItemDescription === "string"
+  );
+}
+
+function isMissingFileError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === "ENOENT"
+  );
+}
+
+function formatInvoicePeriod(month: number, year: number): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
 }

@@ -10,6 +10,7 @@ import {
   listAuditLogs,
   listDocuments,
   listEmployees,
+  listInvoices,
   listLeaveRequests,
 } from "./repository";
 import { getRoleSlugFromViewer } from "./session";
@@ -19,6 +20,8 @@ import type {
   DocumentDTO,
   DocumentRecord,
   EmployeeRecord,
+  InvoiceDTO,
+  InvoiceRecord,
   LeaveRequestDTO,
   LeaveRequestRecord,
   SafeEmployeeDTO,
@@ -26,10 +29,11 @@ import type {
 } from "./types";
 
 export async function getDashboardViewModel(viewer: Viewer): Promise<DashboardViewModel> {
-  const [allEmployees, allLeaveRequests, allDocuments, allAuditLogs] = await Promise.all([
+  const [allEmployees, allLeaveRequests, allDocuments, allInvoices, allAuditLogs] = await Promise.all([
     listEmployees(),
     listLeaveRequests(),
     listDocuments(),
+    listInvoices(),
     listAuditLogs(),
   ]);
   const viewerRecord = getEmployeeById(allEmployees, viewer.id) ?? allEmployees[0];
@@ -44,6 +48,13 @@ export async function getDashboardViewModel(viewer: Viewer): Promise<DashboardVi
     .filter((document) => canViewDocument(viewer, document))
     .map((document) => toDocumentDTO(document, allEmployees));
 
+  const visibleInvoices = allInvoices
+    .filter((invoice) => {
+      const employee = getEmployeeById(allEmployees, invoice.employeeId);
+      return employee ? canViewFinancialProfile(viewer, employee) : false;
+    })
+    .map((invoice) => toInvoiceDTO(invoice, allEmployees));
+
   const visibleDirectory = allEmployees
     .filter((employee) => canViewEmployeeProfile(viewer, employee))
     .map((employee) => toSafeEmployeeDTO(employee, allEmployees));
@@ -52,7 +63,7 @@ export async function getDashboardViewModel(viewer: Viewer): Promise<DashboardVi
     activeRoleSlug: getRoleSlugFromViewer(viewer),
     viewer,
     roleOptions: roleOptions.map(({ slug, label }) => ({ slug, label })),
-    metrics: getMetrics(viewer, allEmployees, allDocuments, visibleRequests, visibleDocuments, visibleDirectory),
+    metrics: getMetrics(viewer, allEmployees, allDocuments, allInvoices, visibleRequests, visibleDocuments, visibleDirectory),
     balances: {
       holidayRemaining: viewerRecord.holidayRemaining,
       holidayAllowance: viewerRecord.holidayAllowance,
@@ -61,6 +72,7 @@ export async function getDashboardViewModel(viewer: Viewer): Promise<DashboardVi
     },
     leaveRequests: visibleRequests,
     documents: visibleDocuments,
+    invoices: visibleInvoices,
     directory: visibleDirectory,
     teamCalendar: visibleRequests.map((request) => ({
       id: request.id,
@@ -159,10 +171,28 @@ function toDocumentDTO(
   };
 }
 
+function toInvoiceDTO(
+  invoice: InvoiceRecord,
+  employees: EmployeeRecord[],
+): InvoiceDTO {
+  const employee = getEmployeeById(employees, invoice.employeeId);
+
+  return {
+    id: invoice.id,
+    employeeId: invoice.employeeId,
+    employeeName: employee?.name ?? "Unknown employee",
+    period: invoice.period,
+    amountLabel: formatMoney(invoice.amount, invoice.currency),
+    status: invoice.status,
+    generatedAt: invoice.generatedAt,
+  };
+}
+
 function getMetrics(
   viewer: Viewer,
   employees: EmployeeRecord[],
   documents: DocumentRecord[],
+  invoices: InvoiceRecord[],
   requests: LeaveRequestDTO[],
   docs: DocumentDTO[],
   directory: SafeEmployeeDTO[],
@@ -173,7 +203,7 @@ function getMetrics(
     .reduce((total, request) => total + request.days, 0);
 
   if (viewer.role === "master_admin") {
-    const invoiceTotal = documents.reduce((total, document) => total + (document.amount ?? 0), 0);
+    const invoiceTotal = invoices.reduce((total, invoice) => total + invoice.amount, 0);
 
     return [
       {

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import {
   createLeaveRequestForViewer,
   decideLeaveRequestForViewer,
@@ -60,14 +61,31 @@ export async function decideLeaveRequestAction(formData: FormData): Promise<void
 
 export async function generateInvoicesAction(formData: FormData): Promise<void> {
   const viewer = await requireCurrentViewer();
+  const month = getNumber(formData, "month");
+  const year = getNumber(formData, "year");
 
-  await generateInvoicesForViewer({
+  const result = await generateInvoicesForViewer({
     viewer,
     period: getString(formData, "period") ?? null,
+    month,
+    year,
+    amountOverrides: getAmountOverrides(formData),
   });
 
   revalidatePath("/");
   revalidatePath("/admin/invoices");
+
+  if (result.ok && "invoices" in result) {
+    const params = new URLSearchParams({
+      status: "pending",
+      generated: formatGeneratedPeriod(month, year),
+      month: month ? String(month) : "",
+      year: year ? String(year) : "",
+      count: String(result.invoices.length),
+    });
+
+    redirect(`/admin/invoices?${params.toString()}`);
+  }
 }
 
 export async function updateEmployeeRoleAction(formData: FormData): Promise<void> {
@@ -96,15 +114,19 @@ export async function requestPasswordResetAction(formData: FormData): Promise<vo
 
 export async function updateInvoiceStatusAction(formData: FormData): Promise<void> {
   const viewer = await requireCurrentViewer();
+  const invoiceId = getRequiredString(formData, "invoiceId");
 
   await updateInvoiceStatusForViewer({
     viewer,
-    invoiceId: getRequiredString(formData, "invoiceId"),
+    invoiceId,
     status: getRequiredString(formData, "status"),
+    amount: getNumber(formData, "amount"),
   });
 
   revalidatePath("/admin/invoices");
-  revalidatePath(`/admin/invoices/${getRequiredString(formData, "invoiceId")}/edit`);
+  revalidatePath(`/admin/invoices/${invoiceId}/edit`);
+
+  redirect(`/admin/invoices/${invoiceId}/edit?saved=1`);
 }
 
 function getString(formData: FormData, key: string): string | undefined {
@@ -120,4 +142,45 @@ function getRequiredString(formData: FormData, key: string): string {
   }
 
   return value;
+}
+
+function getNumber(formData: FormData, key: string): number | null {
+  const value = getString(formData, key);
+
+  if (!value) {
+    return null;
+  }
+
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function getAmountOverrides(formData: FormData): Record<string, number> {
+  const overrides: Record<string, number> = {};
+
+  for (const [key, value] of formData.entries()) {
+    if (!key.startsWith("amountOverride:") || typeof value !== "string" || value.trim() === "") {
+      continue;
+    }
+
+    const amount = Number(value);
+
+    if (Number.isFinite(amount) && amount >= 0) {
+      overrides[key.slice("amountOverride:".length)] = amount;
+    }
+  }
+
+  return overrides;
+}
+
+function formatGeneratedPeriod(month: number | null, year: number | null): string {
+  if (!month || !year) {
+    return "Selected period";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
 }
