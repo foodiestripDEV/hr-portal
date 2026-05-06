@@ -31,13 +31,14 @@ export default async function AdminUsersPage() {
         <Panel icon="people" title="Employee Access">
           <div className="mt-5 overflow-x-auto">
             {users.length > 0 ? (
-              <table className="w-full min-w-[960px] border-collapse text-left text-sm">
+              <table className="w-full min-w-[1080px] border-collapse text-left text-sm">
                 <thead>
                   <tr className="border-b border-zinc-200 text-xs uppercase tracking-wide text-zinc-500">
                     <th className="py-3 pr-4 font-semibold">Employee</th>
                     <th className="py-3 pr-4 font-semibold">Email</th>
                     <th className="py-3 pr-4 font-semibold">Team</th>
                     <th className="py-3 pr-4 font-semibold">Manager</th>
+                    <th className="py-3 pr-4 font-semibold">Leave Balance</th>
                     <th className="py-3 pr-4 font-semibold">Role</th>
                     <th className="py-3 pr-4 font-semibold">Password</th>
                   </tr>
@@ -68,6 +69,14 @@ export default async function AdminUsersPage() {
                         <p className="text-xs text-zinc-500">{user.location}</p>
                       </td>
                       <td className="py-4 pr-4 text-zinc-600">{user.managerName}</td>
+                      <td className="py-4 pr-4 text-zinc-600">
+                        <p className="font-semibold text-zinc-950">
+                          {user.holidayRemaining}/{user.holidayAllowance} days
+                        </p>
+                        <p className="text-xs text-zinc-500">
+                          Sick {user.sickDaysUsed} / Unpaid {user.unpaidLeaveUsed}
+                        </p>
+                      </td>
                       <td className="py-4 pr-4">
                         <form action={updateEmployeeRoleAction} className="flex items-center gap-2">
                           <input name="employeeId" type="hidden" value={user.id} />

@@ -145,7 +145,6 @@ export default async function Home() {
             <form
               action={updatePersonalInfoAction}
               className="mt-5"
-              encType="multipart/form-data"
             >
               <div className="overflow-hidden rounded-lg border border-zinc-200">
                 <ProfileFieldRow label="Name">

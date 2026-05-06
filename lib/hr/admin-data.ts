@@ -90,6 +90,10 @@ export type AdminUserRow = {
   department: string;
   location: string;
   managerName: string;
+  holidayAllowance: number;
+  holidayRemaining: number;
+  sickDaysUsed: number;
+  unpaidLeaveUsed: number;
   profilePhotoUrl: string | null;
 };
 
@@ -249,6 +253,10 @@ export async function getAdminUserRows(): Promise<AdminUserRow[]> {
       department: employee.department,
       location: employee.location,
       managerName: manager?.name ?? "No manager",
+      holidayAllowance: employee.holidayAllowance,
+      holidayRemaining: employee.holidayRemaining,
+      sickDaysUsed: employee.sickDaysUsed,
+      unpaidLeaveUsed: employee.unpaidLeaveUsed,
       profilePhotoUrl: employee.profilePhotoUrl,
     };
   });
